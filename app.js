@@ -41,8 +41,51 @@ function calcHourly(e, prev){
   out.archived = false; out.archiveDate = null;
   return out;
 }
+// ---- Plant Overview (read-only): pure helpers, no new field names ----
+// All inputs are the existing apl_daily / apl_hourly records. Status is INFERRED
+// from the latest hourly steam flow on the selected date only — never from another date.
+function shiftDateStr(dateStr, days){
+  if(!dateStr) return null;
+  var parts = dateStr.split('-').map(function(x){ return parseInt(x, 10); });
+  var d = new Date(Date.UTC(parts[0], parts[1]-1, parts[2]));
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0,10);
+}
+function inferBoilerStatus(latest){
+  if(!latest) return {label:'No reading today', dot:'amber'};
+  var flow = toNum(latest.steamFlow);
+  if(flow===null) return {label:'Flow not entered', dot:'amber'};
+  if(flow>0) return {label:'Running', dot:'green'};
+  if(flow===0) return {label:'Off', dot:'grey'};
+  return {label:'Flow not entered', dot:'amber'};
+}
+function overviewSummary(dailyArr, hourlyArr, dateStr){
+  var daily = dailyArr || [], hourly = hourlyArr || [];
+  var today = null, yesterday = null;
+  daily.forEach(function(d){ if(d.date===dateStr) today = d; if(d.date===shiftDateStr(dateStr,-1)) yesterday = d; });
+  var boilers = ['Loss Boiler','Bay Boiler','Zozen HP Boiler'];
+  var boilerCards = boilers.map(function(b){
+    var rows = hourly.filter(function(h){ return h.boiler===b && h.date===dateStr; });
+    // Latest by time; stable on insertion order for equal times.
+    var indexed = rows.map(function(r,i){ return {r:r, i:i}; });
+    indexed.sort(function(a,c){ var t = String(a.r.time||'').localeCompare(String(c.r.time||'')); return t!==0 ? t : a.i-c.i; });
+    var latest = indexed.length ? indexed[indexed.length-1].r : null;
+    return {boiler:b, latest:latest, status:inferBoilerStatus(latest), count:rows.length};
+  });
+  var dayHourly = hourly.filter(function(h){ return h.date===dateStr; });
+  var alarmRows = dayHourly.filter(function(h){ return h.alarm==='Yes'; });
+  return {
+    date: dateStr, daily: today, yesterday: yesterday,
+    hasAny: daily.length>0 || hourly.length>0,
+    boilers: boilerCards,
+    missing: boilerCards.filter(function(c){ return c.count===0; }).map(function(c){ return c.boiler; }),
+    alarmRows: alarmRows, alarmCount: alarmRows.length,
+    blowdownHourlyCount: dayHourly.filter(function(h){ return h.blowdown==='Yes'; }).length,
+    hourlyCount: dayHourly.length
+  };
+}
 if (typeof module !== 'undefined' && module.exports){
-  module.exports = { toNum: toNum, calcConsumption: calcConsumption, sumNums: sumNums, calcRatio: calcRatio, calcDaily: calcDaily, calcHourly: calcHourly };
+  module.exports = { toNum: toNum, calcConsumption: calcConsumption, sumNums: sumNums, calcRatio: calcRatio, calcDaily: calcDaily, calcHourly: calcHourly, shiftDateStr: shiftDateStr, inferBoilerStatus: inferBoilerStatus, overviewSummary: overviewSummary };
 }
 if (typeof document === 'undefined'){ /* Node test mode: stop here */ }
 else {
@@ -124,7 +167,7 @@ else {
 
   function isAdmin(){ return session && session.role==='Admin'; }
   function showView(name){
-    ['login','dashboard','daily','hourly','reports','settings','admin'].forEach(function(v){
+    ['login','dashboard','overview','daily','hourly','reports','settings','admin'].forEach(function(v){
       var el = $('#view-'+v); if(el) el.classList.toggle('hidden', v!==name);
     });
     var tn = $('#topNav'); if(tn) tn.style.display = (name==='login') ? 'none' : 'flex';
@@ -133,6 +176,7 @@ else {
     $('#logoutBtn').style.display = session ? '' : 'none';
     $('#modeBadge').textContent = (session && session.mode==='appwrite') ? 'APPWRITE' : 'DEMO ONLY';
     if(name==='dashboard') renderDashboard();
+    if(name==='overview') renderOverview();
     if(name==='daily') renderDailyList();
     if(name==='hourly') renderHourly();
     if(name==='reports') {}
@@ -217,6 +261,75 @@ else {
       + '<p>Hourly rows — Loss: <b>' + (counts['Loss Boiler']||0) + '</b> • Bay: <b>' + (counts['Bay Boiler']||0) + '</b> • Zozen HP: <b>' + (counts['Zozen HP Boiler']||0) + '</b></p>'
       + (daily.length ? '<p>Last daily date: <b>' + daily[daily.length-1].date + '</b></p>' : '<p class="muted">No entries yet. Tap Daily to add the first once-daily overview.</p>');
   }
+
+  // ---- Plant Overview (read-only) ----
+  var ovDate = new Date().toISOString().slice(0,10);
+  function ovNum(v, dec){
+    if(v===null||v===undefined||v==='') return '—';
+    var n = Number(v); if(isNaN(n)) return '—';
+    return dec ? n.toFixed(dec) : String(n);
+  }
+  function ovDiff(curr, prev, dec){
+    if(curr===null||curr===undefined||curr===''||prev===null||prev===undefined||prev==='') return 'No yesterday entry';
+    var d = Number(curr) - Number(prev);
+    var arrow = d>0 ? '▲ ' : (d<0 ? '▼ ' : '• ');
+    return 'vs yesterday: ' + arrow + (d>0 ? '+' : '') + d.toFixed(dec);
+  }
+  function renderOverview(){
+    // Re-read saved data every time, so Refresh is a true re-read.
+    daily = load('apl_daily', []); hourly = load('apl_hourly', []);
+    var inp = $('#ov_date'); if(inp) inp.value = ovDate;
+    var label = $('#ov_dateLabel');
+    if(label) label.textContent = 'Showing: ' + ovDate + (ovDate===new Date().toISOString().slice(0,10) ? ' (today)' : '');
+    var s = overviewSummary(daily, hourly, ovDate);
+    var emptyEl = $('#ov_empty'), mainEl = $('#ov_main');
+    if(!s.hasAny){
+      if(emptyEl) emptyEl.innerHTML = '<p class="warn"><b>No entries yet — add a Daily Overview or an Hourly row first.</b></p><div class="row"><button class="btn" data-nav="daily">Go to Daily</button><button class="btn secondary" data-nav="hourly">Go to Hourly</button></div>';
+      if(mainEl) mainEl.classList.add('hidden');
+      return;
+    }
+    if(emptyEl) emptyEl.innerHTML = '';
+    if(mainEl) mainEl.classList.remove('hidden');
+    var d = s.daily, y = s.yesterday;
+    var note = $('#ov_dailyNote');
+    if(note) note.innerHTML = d ? '<p class="ok">Daily Overview found for ' + ovDate + ' (filled by ' + (d.filledBy||'—') + ').</p>'
+      : '<p class="warn"><b>No Daily Overview for this date yet</b> — daily totals below show “—”, not 0. <button class="btn secondary small" data-nav="daily">Go to Daily</button></p>';
+    function kpi(cls, labelText, value, sub){
+      return '<div class="kpi ' + cls + '"><div class="k-label">' + labelText + '</div><div class="k-value">' + value + '</div><div class="k-sub">' + (sub||'') + '</div></div>';
+    }
+    $('#ov_kpis').innerHTML =
+      kpi('kpi-steam', 'Steam generation (ton)', ovNum(d ? d.steam : null), d ? 'Daily entry' : 'No Daily entry') +
+      kpi('kpi-gas', 'Total gas (consumption)', ovNum(d ? d.totalGas : null), d ? 'Loss + Bay + Zozen' : 'No Daily entry') +
+      kpi('kpi-total', 'Total diesel', ovNum(d ? d.totalDiesel : null), d ? 'Loss + Zozen' : 'No Daily entry') +
+      kpi('kpi-water', 'Total soft water', ovNum(d ? d.totalSoft : null), d ? 'Loss + Bay + Zozen' : 'No Daily entry');
+    $('#ov_ratios').innerHTML =
+      kpi('kpi-gas', 'Gas m³/ton', ovNum(d ? d.gasPerTon : null, 2), d ? ovDiff(d.gasPerTon, y ? y.gasPerTon : null, 2) : 'No Daily entry') +
+      kpi('kpi-water', 'Water m³/ton', ovNum(d ? d.waterPerTon : null, 2), d ? ovDiff(d.waterPerTon, y ? y.waterPerTon : null, 2) : 'No Daily entry');
+    $('#ov_boilers').innerHTML = s.boilers.map(function(c){
+      var l = c.latest;
+      return '<div class="boiler-kpi"><h4><span class="dot ' + c.status.dot + '"></span>' + c.boiler + ' — ' + c.status.label + '</h4>'
+        + '<p class="muted">Inferred status (from latest hourly steam flow on ' + ovDate + '). ' + (l ? 'Latest reading: ' + l.date + ' ' + (l.time||'') + ' • ' + (l.shift||'') + ' • ' + (l.operator||'') : 'No hourly row on this date.') + '</p>'
+        + '<div class="grid"><div><span class="muted">Steam pressure (bar)</span><div class="k-value">' + ovNum(l ? l.steamPressure : null) + '</div></div>'
+        + '<div><span class="muted">Steam flow (t/h)</span><div class="k-value">' + ovNum(l ? l.steamFlow : null) + '</div></div>'
+        + '<div><span class="muted">Feed tank level % (own tank)</span><div class="k-value">' + ovNum(l ? l.feedTankLevel : null) + '</div></div>'
+        + '<div><span class="muted">Feed tank temp °C (own tank)</span><div class="k-value">' + ovNum(l ? l.feedTankTemp : null) + '</div></div></div></div>';
+    }).join('');
+    var alerts = $('#ov_alerts');
+    if(s.missing.length===0){
+      alerts.innerHTML = '<p class="ok"><span class="dot green"></span><b>All boilers have readings today</b> (' + ovDate + ', ' + s.hourlyCount + ' hourly rows).</p>';
+    } else {
+      alerts.innerHTML = '<p class="warn"><span class="dot amber"></span><b>Missing readings on ' + ovDate + ':</b> ' + s.missing.join(', ') + '. <button class="btn secondary small" data-nav="hourly">Go to Hourly</button></p>';
+    }
+    var alarms = $('#ov_alarms');
+    var alarmList = s.alarmRows.length ? s.alarmRows.map(function(h){ return h.boiler + ' at ' + (h.time||'—'); }).join(' • ') : 'None on this date.';
+    alarms.innerHTML = '<p><b>Alarms / trips (hourly, this date): ' + s.alarmCount + '</b> — ' + alarmList + '</p>'
+      + '<p>Daily blowdown: <b>' + ovNum(d ? d.blowdown : null) + ' m³</b> &nbsp;•&nbsp; Hourly rows with Blowdown = Yes: <b>' + s.blowdownHourlyCount + '</b></p>';
+  }
+  $('#ov_prevBtn').onclick = function(){ ovDate = shiftDateStr(ovDate, -1); renderOverview(); };
+  $('#ov_nextBtn').onclick = function(){ ovDate = shiftDateStr(ovDate, 1); renderOverview(); };
+  $('#ov_refreshBtn').onclick = function(){ renderOverview(); };
+  var _ovDateInput = $('#ov_date');
+  if(_ovDateInput) _ovDateInput.addEventListener('change', function(){ if(_ovDateInput.value){ ovDate = _ovDateInput.value; renderOverview(); } });
 
   // ---- Daily ----
   // Card targets: same field IDs, only grouped into the stepper cards in index.html.
