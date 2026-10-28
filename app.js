@@ -127,7 +127,9 @@ else {
     ['login','dashboard','daily','hourly','reports','settings','admin'].forEach(function(v){
       var el = $('#view-'+v); if(el) el.classList.toggle('hidden', v!==name);
     });
-    $('#bottomNav').style.display = (name==='login') ? 'none' : 'flex';
+    var tn = $('#topNav'); if(tn) tn.style.display = (name==='login') ? 'none' : 'flex';
+    $$('#topNav [data-nav]').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-nav')===name); });
+    window.scrollTo(0,0);
     $('#logoutBtn').style.display = session ? '' : 'none';
     $('#modeBadge').textContent = (session && session.mode==='appwrite') ? 'APPWRITE' : 'DEMO ONLY';
     if(name==='dashboard') renderDashboard();
@@ -141,6 +143,20 @@ else {
     if(!session){ showView('login'); return false; }
     return true;
   }
+  // ---- Stepper: only toggles visibility, never re-renders or clears inputs ----
+  // Typed values live in the DOM inputs, so Next/Previous cannot lose them:
+  // this code only adds/removes the .hidden class on already-built cards.
+  var dailyStep = 0, hourlyStep = 0;
+  function updateStepper(cardsId, labelId, step, showAll){
+    var cards = $$('#'+cardsId+' .step-card');
+    cards.forEach(function(c,i){ c.classList.toggle('hidden', !showAll && i!==step); });
+    var label = $('#'+labelId);
+    if(label) label.textContent = showAll ? ('All cards ('+cards.length+' cards)') : ('Card '+(step+1)+' of '+cards.length);
+    return cards.length;
+  }
+  function updateDailyStepper(){ return updateStepper('dailyStepCards','dailyStepLabel',dailyStep, $('#dailyShowAll') && $('#dailyShowAll').checked); }
+  function updateHourlyStepper(){ return updateStepper('hourlyStepCards','hourlyStepLabel',hourlyStep, $('#hourlyShowAll') && $('#hourlyShowAll').checked); }
+  function scrollToCards(id){ var el = document.getElementById(id); if(el) el.scrollIntoView({behavior:'smooth', block:'start'}); }
   document.addEventListener('click', function(e){
     var nav = e.target.closest('[data-nav]');
     if(nav){
@@ -203,18 +219,33 @@ else {
   }
 
   // ---- Daily ----
+  // Card targets: same field IDs, only grouped into the stepper cards in index.html.
+  var DAILY_CARD_TARGETS = {
+    'Site Main Gas Meter':'dailyMetersSiteGas', 'Loss Boiler Gas':'dailyMetersLossGas',
+    'Bay Boiler Gas':'dailyMetersBayGas', 'Zozen HP Boiler Gas':'dailyMetersZozenGas',
+    'Loss Boiler Diesel':'dailyMetersDiesel', 'Zozen Boiler Diesel':'dailyMetersDiesel',
+    'Boiler House Factory Water':'dailyMetersWater', 'Softners Factory Water':'dailyMetersWater',
+    'Loss Boiler Soft Water':'dailyMetersWater', 'Bay Boiler Soft Water':'dailyMetersWater',
+    'Zozen HP Boiler Soft Water':'dailyMetersWater'
+  };
   function renderDailyMeters(){
-    var wrap = $('#dailyMeters'); wrap.innerHTML = '';
+    var targets = {};
+    Object.keys(DAILY_CARD_TARGETS).forEach(function(g){ targets[DAILY_CARD_TARGETS[g]] = (targets[DAILY_CARD_TARGETS[g]]||0)+1; });
+    Object.values(DAILY_CARD_TARGETS).forEach(function(id){ var el = document.getElementById(id); if(el) el.innerHTML=''; });
     DAILY_METERS.forEach(function(m){
+      var wrap = document.getElementById(DAILY_CARD_TARGETS[m.group]); if(!wrap) return;
       var div = document.createElement('div');
-      div.innerHTML = '<h3>' + m.group + '</h3><div class="grid">'
+      // Multi-meter cards (Diesel, Water) need a sub-heading per meter; single-meter cards already have the card title.
+      var sub = (targets[DAILY_CARD_TARGETS[m.group]] > 1) ? ('<h4>'+m.group+'</h4>') : '';
+      div.innerHTML = sub + '<div class="grid">'
         + '<div><label>Meter Reading</label><input type="number" step="any" id="d_' + m.r + '"></div>'
         + '<div><label>Consumption (auto, or manual on first day)</label><input type="number" step="any" id="d_' + m.c + '"></div></div>';
       wrap.appendChild(div);
     });
-    wrap.querySelectorAll('input').forEach(function(inp){ inp.addEventListener('input', recomputeDaily); });
+    $$('#dailyStepCards input').forEach(function(inp){ inp.addEventListener('input', recomputeDaily); });
     $('#d_steam').addEventListener('input', recomputeDaily);
     $('#d_date').addEventListener('change', function(){ applyDailyPrev(); recomputeDaily(); });
+    updateDailyStepper();
   }
   function prevDailyFor(dateStr){
     if(!dateStr) return null;
@@ -270,23 +301,34 @@ else {
     $('#dailyMsg').innerHTML = '<span class="ok">Saved daily overview for ' + raw.date + '. Total Gas: ' + (calc.totalGas===null?'-':calc.totalGas) + ', Gas m³/ton: ' + (calc.gasPerTon===null?'-':Math.round(calc.gasPerTon*100)/100) + '</span>';
     renderDailyList(); renderDashboard();
   };
-  $('#clearDailyBtn').onclick = function(){ $$('#dailyMeters input, #d_steam, #d_blowdown, #d_remarks').forEach(function(i){ i.value=''; }); recomputeDaily(); };
+  $('#clearDailyBtn').onclick = function(){ $$('#dailyStepCards input').forEach(function(i){ i.value=''; }); recomputeDaily(); };
 
   // ---- Hourly ----
+  // Field key -> stepper card container. Same field IDs, only grouped.
+  function hourlyCardTarget(k){
+    if(['steamPressure','steamTemp','steamFlow','drumLevel'].indexOf(k)>=0) return 'hourlyCardSteam';
+    if(['feedTankLevel','feedTankTemp','feedWaterPressure','feedWaterFlow'].indexOf(k)>=0) return 'hourlyCardFeed';
+    if(['fuelGasMeter','fuelGasCons','fuelGasPressure','dieselMeter','dieselCons'].indexOf(k)>=0) return 'hourlyCardFuel';
+    if(['stackTemp','o2','co','softMeter','softCons'].indexOf(k)>=0) return 'hourlyCardStack';
+    return 'hourlyCardChecks'; // blowdown, tds, ph, alarm, remarks
+  }
   function renderHourly(){
     var tabs = $('#boilerTabs'); tabs.innerHTML = '';
     equipment.forEach(function(eq){
       var b = document.createElement('button');
       b.textContent = eq.name; b.className = (eq.name===currentBoiler) ? 'active' : '';
-      b.onclick = function(){ currentBoiler = eq.name; renderHourly(); };
+      b.onclick = function(){ currentBoiler = eq.name; hourlyStep = 0; renderHourly(); };
       tabs.appendChild(b);
     });
     var hasDiesel = /Loss|Zozen/i.test(currentBoiler);
     $('#boilerNote').innerHTML = 'Sheet for <b>' + currentBoiler + ' only</b>. Fill one row every hour, from shift start to end. The next operator continues on the next row of this same sheet. '
       + (hasDiesel ? 'This boiler has a diesel meter.' : 'Note: Bay Boiler has NO diesel meter in the v3 daily summary, so no diesel fields are shown here. Tell us if Bay also uses diesel.') + ' '
       + 'Feed Water Tank Level / Temp. below are for <b>this boiler’s own tank</b>, not shared.';
-    var wrap = $('#hourlyFields'); wrap.innerHTML = '';
+    var fuelNote = $('#hourlyFuelNote');
+    if(fuelNote) fuelNote.textContent = hasDiesel ? 'This boiler has a diesel meter.' : 'Bay Boiler has NO diesel meter in the v3 daily summary, so no diesel fields are shown here.';
+    ['hourlyCardSteam','hourlyCardFeed','hourlyCardFuel','hourlyCardStack','hourlyCardChecks'].forEach(function(id){ var el = document.getElementById(id); if(el) el.innerHTML=''; });
     hourlyFieldsFor(currentBoiler).forEach(function(f){
+      var wrap = document.getElementById(hourlyCardTarget(f.k)); if(!wrap) return;
       var div = document.createElement('div');
       if(f.t==='select'){
         div.innerHTML = '<label>'+f.l+'</label><select id="h_'+f.k+'">'+f.opts.map(function(o){ return '<option>'+o+'</option>'; }).join('')+'</select>';
@@ -295,8 +337,8 @@ else {
       }
       wrap.appendChild(div);
     });
-    wrap.className = 'grid';
     if(session) $('#h_operator').value = session.name;
+    updateHourlyStepper();
     renderHourlyList();
   }
   function renderHourlyList(){
@@ -321,7 +363,7 @@ else {
     $('#hourlyMsg').innerHTML = '<span class="ok">Saved hourly row for ' + currentBoiler + ' at ' + raw.date + ' ' + raw.time + '. Gas consumption: ' + (calc.fuelGasCons===null?'- (first row, no previous)':calc.fuelGasCons) + '</span>';
     renderHourlyList();
   };
-  $('#clearHourlyBtn').onclick = function(){ $$('#hourlyFields input, #hourlyFields select').forEach(function(i){ i.value=''; }); };
+  $('#clearHourlyBtn').onclick = function(){ $$('#hourlyStepCards input, #hourlyStepCards select').forEach(function(i){ i.value=''; }); };
 
   // ---- Reports ----
   function filteredRows(){
@@ -423,6 +465,14 @@ else {
     }
     $('#modal').classList.add('hidden'); renderHourly(); alert('Saved. New sections/equipment need no code change.');
   };
+
+  // ---- Stepper buttons (visibility only — values are never cleared here) ----
+  $('#dailyPrevBtn').onclick = function(){ if(dailyStep>0){ dailyStep--; updateDailyStepper(); scrollToCards('dailyStepCards'); } };
+  $('#dailyNextBtn').onclick = function(){ var n = updateDailyStepper(); if(dailyStep < n-1){ dailyStep++; updateDailyStepper(); scrollToCards('dailyStepCards'); } else { $('#saveDailyBtn').click(); } };
+  $('#dailyShowAll').onchange = function(){ updateDailyStepper(); };
+  $('#hourlyPrevBtn').onclick = function(){ if(hourlyStep>0){ hourlyStep--; updateHourlyStepper(); scrollToCards('hourlyStepCards'); } };
+  $('#hourlyNextBtn').onclick = function(){ var n = updateHourlyStepper(); if(hourlyStep < n-1){ hourlyStep++; updateHourlyStepper(); scrollToCards('hourlyStepCards'); } else { $('#saveHourlyBtn').click(); } };
+  $('#hourlyShowAll').onchange = function(){ updateHourlyStepper(); };
 
   // ---- Init ----
   renderDailyMeters();
