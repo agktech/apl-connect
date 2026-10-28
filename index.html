@@ -15,7 +15,7 @@
   <div><span id="modeBadge" class="demo-badge">DEMO ONLY</span> <button class="btn small secondary" id="logoutBtn" style="display:none">Logout</button></div>
 </header>
 <nav class="topnav" id="topNav" style="display:none">
-  <button data-nav="dashboard">Dashboard</button><button data-nav="daily">Daily</button><button data-nav="hourly">Hourly</button><button data-nav="reports">Reports</button><button data-nav="settings">Settings</button>
+  <button data-nav="dashboard">Dashboard</button><button data-nav="overview">Overview</button><button data-nav="daily">Daily</button><button data-nav="hourly">Hourly</button><button data-nav="reports">Reports</button><button data-nav="settings">Settings</button>
 </nav>
 </div>
 <main>
@@ -34,6 +34,7 @@
   <section id="view-dashboard" class="hidden">
     <div class="card"><h2 id="welcomeText">Dashboard</h2><p class="muted" id="userLine"></p><p class="muted">Section: Boiler House. One daily overview per date. One hourly sheet per boiler — the next operator continues on the next row of the same boiler sheet.</p></div>
     <div class="tiles">
+      <button class="tile green" data-nav="overview"><b>Plant Overview</b><span>Key numbers at a glance — steam, gas/ton, boiler status</span></button>
       <button class="tile" data-nav="daily"><b>Daily Overview</b><span>Fill once daily — meter readings, totals, m³/ton</span></button>
       <button class="tile green" data-nav="hourly"><b>Hourly Boilers</b><span>Loss / Bay / Zozen HP — one row per hour</span></button>
       <button class="tile dark" data-nav="reports"><b>Reports</b><span>Date range, CSV export, Print / PDF</span></button>
@@ -111,6 +112,37 @@
       <p id="hourlyMsg"></p>
       <div class="stepper-footer noprint"><button class="btn secondary" id="hourlyPrevBtn">← Previous</button><button class="btn secondary" id="hourlyNextBtn">Next →</button><button class="btn" id="saveHourlyBtn">Save Hourly Row</button><button class="btn secondary" id="clearHourlyBtn">Clear form</button></div>
       <h3>Saved rows for this boiler (newest first)</h3><div id="hourlyList"></div>
+    </div>
+  </section>
+
+  <!-- PLANT OVERVIEW (read-only KPI dashboard) -->
+  <section id="view-overview" class="hidden">
+    <div class="backrow noprint"><button class="btn secondary small" data-nav="dashboard">← Back to Dashboard</button></div>
+    <div class="card">
+      <h2>Plant Overview — key numbers at a glance</h2>
+      <p class="muted">Read-only. Every number below is calculated from Daily Overview and Hourly rows already saved. No extra typing. Boiler status is <b>inferred</b> from the latest hourly steam flow — it is not a status the operator typed.</p>
+      <div class="row noprint" style="margin-bottom:10px">
+        <div><label>Date shown</label><input type="date" id="ov_date"></div>
+        <button class="btn secondary" id="ov_prevBtn">← Previous Day</button>
+        <button class="btn secondary" id="ov_nextBtn">Next Day →</button>
+        <button class="btn" id="ov_refreshBtn">Refresh</button>
+      </div>
+      <p id="ov_dateLabel" class="muted"></p>
+      <div id="ov_empty"></div>
+      <div id="ov_main">
+        <div id="ov_dailyNote"></div>
+        <h3>Key numbers for this date</h3>
+        <div class="kpi-grid" id="ov_kpis"></div>
+        <h3>Efficiency vs yesterday</h3>
+        <div class="kpi-grid" id="ov_ratios"></div>
+        <h3>Boilers — latest reading on this date</h3>
+        <div id="ov_boilers"></div>
+        <h3>Missing readings</h3>
+        <div id="ov_alerts"></div>
+        <h3>Alarms &amp; blowdown</h3>
+        <div id="ov_alarms"></div>
+        <p class="muted">Inferred status rule: latest hourly steam flow &gt; 0 = Running (green); = 0 = Off (grey); no hourly row on this date = No reading today (amber); hourly row present but steam flow blank = Flow not entered (amber).</p>
+      </div>
     </div>
   </section>
 
