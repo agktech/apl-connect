@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>APL Connect — Boiler House Logbook (Phase 1)</title>
+<link rel="stylesheet" href="style.css">
+<!-- Appwrite SDK, optional: app works fully in DEMO mode if this fails to load -->
+<script src="https://cdn.jsdelivr.net/npm/appwrite@16.1.0/dist/cdn/appwrite.min.js"></script>
+</head>
+<body>
+<header>
+  <div><h1>APL Connect</h1><p>Boiler House Logbook — Phase 1 (Test)</p></div>
+  <div><span id="modeBadge" class="demo-badge">DEMO ONLY</span> <button class="btn small secondary" id="logoutBtn" style="display:none">Logout</button></div>
+</header>
+<main>
+  <!-- LOGIN -->
+  <section id="view-login" class="card">
+    <h2>Login</h2>
+    <p class="warn"><b>DEMO ONLY:</b> This Phase 1 test version works without any backend. No real password, token or company data is stored in this app. Use the demo logins below. For a real plant account, see Settings → Appwrite later.</p>
+    <label>Email</label><input id="loginEmail" type="email" autocomplete="username" placeholder="admin@apl.test">
+    <label>Password</label><input id="loginPassword" type="password" autocomplete="current-password" placeholder="admin123">
+    <div class="row" style="margin-top:12px"><button class="btn" id="loginBtn">Login</button><button class="btn secondary" id="fillAdminBtn">Fill Admin demo</button><button class="btn secondary" id="fillOperatorBtn">Fill Operator demo</button></div>
+    <p class="muted">Demo Admin: admin@apl.test / admin123 &nbsp;|&nbsp; Demo Operator: operator@apl.test / operator123</p>
+    <p id="loginMsg" class="muted"></p>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section id="view-dashboard" class="hidden">
+    <div class="card"><h2 id="welcomeText">Dashboard</h2><p class="muted" id="userLine"></p><p class="muted">Section: Boiler House. One daily overview per date. One hourly sheet per boiler — the next operator continues on the next row of the same boiler sheet.</p></div>
+    <div class="tiles">
+      <button class="tile" data-nav="daily"><b>Daily Overview</b><span>Fill once daily — meter readings, totals, m³/ton</span></button>
+      <button class="tile green" data-nav="hourly"><b>Hourly Boilers</b><span>Loss / Bay / Zozen HP — one row per hour</span></button>
+      <button class="tile dark" data-nav="reports"><b>Reports</b><span>Date range, CSV export, Print / PDF</span></button>
+      <button class="tile dark" data-nav="settings"><b>Settings</b><span>Appwrite connection (optional)</span></button>
+    </div>
+    <div class="card" id="adminTiles" style="display:none"><h3>Admin only</h3><p class="muted">Add sections and equipment with the yellow + button, or open Admin → Users below.</p><button class="btn" data-nav="admin">Admin: Users &amp; Sections</button></div>
+    <div class="card"><h3>Today at a glance</h3><div id="glance"></div></div>
+  </section>
+
+  <!-- DAILY -->
+  <section id="view-daily" class="hidden">
+    <div class="card">
+      <h2>Daily Overview — fill once daily</h2>
+      <p class="muted">Exactly the v3 Daily Boiler Summary columns. Type meter readings, steam generation and blowdown. Grey fields calculate themselves. First day of a month: type consumption manually (no yesterday in the app yet).</p>
+      <div class="grid">
+        <div><label>Date</label><input type="date" id="d_date"></div>
+        <div><label>Filled By (Operator)</label><input id="d_filledBy" placeholder="Operator name"></div>
+      </div>
+      <div id="dailyMeters"></div>
+      <div class="grid">
+        <div><label>Boilers Total Gas Consumption (auto)</label><input id="d_totalGas" readonly></div>
+        <div><label>Total Diesel Consumption (auto)</label><input id="d_totalDiesel" readonly></div>
+        <div><label>Total Soft Consumption (auto)</label><input id="d_totalSoft" readonly></div>
+        <div><label>Steam Generation (ton)</label><input type="number" step="any" id="d_steam"></div>
+        <div><label>Gas m³/ton (auto)</label><input id="d_gasPerTon" readonly></div>
+        <div><label>Water m³/ton (auto)</label><input id="d_waterPerTon" readonly></div>
+        <div><label>Blowdown (m³)</label><input type="number" step="any" id="d_blowdown"></div>
+        <div><label>Remarks</label><input id="d_remarks" placeholder="Any abnormality"></div>
+      </div>
+      <p id="dailyMsg"></p>
+      <div class="row"><button class="btn" id="saveDailyBtn">Save Daily Overview</button><button class="btn secondary" id="clearDailyBtn">Clear form</button></div>
+      <h3>Saved daily entries</h3><div id="dailyList"></div>
+    </div>
+  </section>
+
+  <!-- HOURLY -->
+  <section id="view-hourly" class="hidden">
+    <div class="card">
+      <h2>Hourly Boiler Log — one sheet per boiler</h2>
+      <nav class="tabs" id="boilerTabs"></nav>
+      <p class="muted" id="boilerNote"></p>
+      <div class="grid">
+        <div><label>Date</label><input type="date" id="h_date"></div>
+        <div><label>Time</label><input type="time" id="h_time"></div>
+        <div><label>Shift</label><select id="h_shift"><option>Morning</option><option>Evening</option><option>Night</option></select></div>
+        <div><label>Operator</label><input id="h_operator" placeholder="Operator name"></div>
+      </div>
+      <div id="hourlyFields"></div>
+      <p id="hourlyMsg"></p>
+      <div class="row"><button class="btn" id="saveHourlyBtn">Save Hourly Row</button><button class="btn secondary" id="clearHourlyBtn">Clear form</button></div>
+      <h3>Saved rows for this boiler (newest first)</h3><div id="hourlyList"></div>
+    </div>
+  </section>
+
+  <!-- REPORTS -->
+  <section id="view-reports" class="hidden">
+    <div class="card">
+      <h2>Reports</h2>
+      <div class="grid">
+        <div><label>From date</label><input type="date" id="r_from"></div>
+        <div><label>To date</label><input type="date" id="r_to"></div>
+        <div><label>Boiler / view</label><select id="r_boiler"><option value="all">All boilers + Daily</option><option value="daily">Daily Overview only</option><option value="Loss Boiler">Loss Boiler</option><option value="Bay Boiler">Bay Boiler</option><option value="Zozen HP Boiler">Zozen HP Boiler</option></select></div>
+      </div>
+      <div class="row" style="margin-top:12px"><button class="btn" id="runReportBtn">Show Report</button><button class="btn secondary" id="exportCsvBtn">Export CSV</button><button class="btn secondary noprint" onclick="window.print()">Print / Save as PDF</button></div>
+      <div id="reportOut" style="margin-top:14px"></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS / APPWRITE -->
+  <section id="view-settings" class="hidden">
+    <div class="card">
+      <h2>Settings — Appwrite (optional, later)</h2>
+      <p class="warn">Do NOT paste any password here. The owner creates a free Appwrite Cloud project, then pastes only the Endpoint, Project ID, Database ID and Collection IDs below. If these are blank, the app stays in DEMO mode and still works fully.</p>
+      <p id="appwriteStatus" class="muted"></p>
+      <label>Appwrite Endpoint</label><input id="aw_endpoint" placeholder="https://cloud.appwrite.io/v1">
+      <label>Project ID</label><input id="aw_project">
+      <label>Database ID</label><input id="aw_database">
+      <label>Daily Overview Collection ID</label><input id="aw_daily">
+      <label>Hourly Readings Collection ID</label><input id="aw_hourly">
+      <label>Sections Collection ID</label><input id="aw_sections">
+      <label>Equipment Collection ID</label><input id="aw_equipment">
+      <label>Users Collection ID (for role lookup)</label><input id="aw_users">
+      <div class="row" style="margin-top:12px"><button class="btn" id="saveAwBtn">Save Appwrite Settings</button><button class="btn secondary" id="clearAwBtn">Use Demo Mode (clear)</button></div>
+      <p class="muted">When Appwrite is configured, login will first try Appwrite email/password auth, and readings will be saved to Appwrite as well as locally. Role comes from the user record in the Users collection; if that lookup fails, the user is treated as Operator. Archive to Supabase / R2 is Phase 2, not in this version — every record already has an <code>archived</code> flag and <code>archiveDate</code> field ready for later.</p>
+    </div>
+  </section>
+
+  <!-- ADMIN -->
+  <section id="view-admin" class="hidden">
+    <div class="card">
+      <h2>Admin — Users &amp; Sections</h2>
+      <p class="muted">Admin only. Operators do not see this screen.</p>
+      <h3>Demo users (local test only)</h3><div id="userList"></div>
+      <div class="grid">
+        <div><label>New user name</label><input id="u_name"></div>
+        <div><label>New user email</label><input id="u_email" type="email"></div>
+        <div><label>New user password (demo only)</label><input id="u_pass" type="password"></div>
+        <div><label>Role</label><select id="u_role"><option>Operator</option><option>Admin</option></select></div>
+      </div>
+      <button class="btn" id="addUserBtn" style="margin-top:12px">Add Demo User</button>
+      <h3>Sections &amp; Equipment</h3><div id="sectionList"></div>
+      <p class="muted">Use the yellow + button to add a new section or equipment. This is the generic engine: new sections and equipment need no code change.</p>
+    </div>
+  </section>
+
+  <nav class="tabs noprint" id="bottomNav" style="display:none">
+    <button data-nav="dashboard">Dashboard</button><button data-nav="daily">Daily</button><button data-nav="hourly">Hourly</button><button data-nav="reports">Reports</button><button data-nav="settings">Settings</button>
+  </nav>
+</main>
+
+<button class="fab noprint" id="fabBtn" title="Add">+</button>
+
+<div id="modal" class="modal hidden"><div class="box">
+  <h2>Add</h2>
+  <label>Type</label><select id="m_type"><option value="section">New Section</option><option value="equipment">New Equipment (in a section)</option></select>
+  <div id="m_sectionWrap"><label>Section name</label><input id="m_section" placeholder="e.g. Chiller Plant"></div>
+  <div id="m_equipmentWrap"><label>Section</label><select id="m_sectionSelect"></select><label>Equipment name</label><input id="m_equipment" placeholder="e.g. Chiller #1"></div>
+  <p id="modalMsg" class="muted"></p>
+  <div class="row"><button class="btn" id="modalSaveBtn">Save</button><button class="btn secondary" id="modalCloseBtn">Cancel</button></div>
+</div></div>
+
+<script src="app.js"></script>
+</body>
+</html>
