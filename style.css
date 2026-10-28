@@ -26,3 +26,17 @@ input,select{ min-height:44px; padding:10px 12px }
 main{padding-bottom:150px}
 .fab{bottom:88px}
 @media(max-width:600px){.topnav button{min-width:84px;padding:10px 6px;font-size:15px}.step-card{padding:10px}}
+
+/* --- Plant Overview: Tulip-style key numbers, read-only --- */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+.kpi{background:#fff;border:1px solid #e2e8f0;border-left:6px solid #334155;border-radius:12px;padding:12px}
+.kpi .k-label{font-size:13px;color:#5b6b85;font-weight:700}
+.kpi .k-value{font-size:28px;font-weight:800;line-height:1.15;margin:4px 0}
+.kpi .k-sub{font-size:13px;color:#5b6b85}
+.kpi-gas{border-left-color:#e67e22}.kpi-water{border-left-color:#b7950b}.kpi-total{border-left-color:#2e7d32}.kpi-steam{border-left-color:#2e75b6}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.dot.green{background:#2e7d32}.dot.amber{background:#f59e0b}.dot.grey{background:#94a3b8}.dot.red{background:#c62828}
+.boiler-kpi{background:#fff;border:1px solid #e2e8f0;border-left:6px solid #334155;border-radius:12px;padding:12px;margin-bottom:10px}
+.boiler-kpi h4{margin:0 0 6px;font-size:17px}
+.boiler-kpi .k-value{font-size:20px;font-weight:800}
+@media(max-width:700px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.kpi .k-value{font-size:24px}}
