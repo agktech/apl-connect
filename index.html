@@ -9,10 +9,15 @@
 <script src="https://cdn.jsdelivr.net/npm/appwrite@16.1.0/dist/cdn/appwrite.min.js"></script>
 </head>
 <body>
+<div class="sticky-top noprint">
 <header>
   <div><h1>APL Connect</h1><p>Boiler House Logbook — Phase 1 (Test)</p></div>
   <div><span id="modeBadge" class="demo-badge">DEMO ONLY</span> <button class="btn small secondary" id="logoutBtn" style="display:none">Logout</button></div>
 </header>
+<nav class="topnav" id="topNav" style="display:none">
+  <button data-nav="dashboard">Dashboard</button><button data-nav="daily">Daily</button><button data-nav="hourly">Hourly</button><button data-nav="reports">Reports</button><button data-nav="settings">Settings</button>
+</nav>
+</div>
 <main>
   <!-- LOGIN -->
   <section id="view-login" class="card">
@@ -40,51 +45,78 @@
 
   <!-- DAILY -->
   <section id="view-daily" class="hidden">
+    <div class="backrow noprint"><button class="btn secondary small" data-nav="dashboard">← Back to Dashboard</button></div>
     <div class="card">
       <h2>Daily Overview — fill once daily</h2>
-      <p class="muted">Exactly the v3 Daily Boiler Summary columns. Type meter readings, steam generation and blowdown. Grey fields calculate themselves. First day of a month: type consumption manually (no yesterday in the app yet).</p>
-      <div class="grid">
-        <div><label>Date</label><input type="date" id="d_date"></div>
-        <div><label>Filled By (Operator)</label><input id="d_filledBy" placeholder="Operator name"></div>
-      </div>
-      <div id="dailyMeters"></div>
-      <div class="grid">
-        <div><label>Boilers Total Gas Consumption (auto)</label><input id="d_totalGas" readonly></div>
-        <div><label>Total Diesel Consumption (auto)</label><input id="d_totalDiesel" readonly></div>
-        <div><label>Total Soft Consumption (auto)</label><input id="d_totalSoft" readonly></div>
-        <div><label>Steam Generation (ton)</label><input type="number" step="any" id="d_steam"></div>
-        <div><label>Gas m³/ton (auto)</label><input id="d_gasPerTon" readonly></div>
-        <div><label>Water m³/ton (auto)</label><input id="d_waterPerTon" readonly></div>
-        <div><label>Blowdown (m³)</label><input type="number" step="any" id="d_blowdown"></div>
-        <div><label>Remarks</label><input id="d_remarks" placeholder="Any abnormality"></div>
+      <p class="muted">Exactly the v3 Daily Boiler Summary columns. Type meter readings, steam generation and blowdown. Grey fields calculate themselves. First day of a month: type consumption manually (no yesterday in the app yet). Fill one card, tap Next, and so on — you never have to scroll the whole long form.</p>
+      <div class="stepper-bar noprint"><span id="dailyStepLabel">Card 1 of 8</span><label class="toggle"><input type="checkbox" id="dailyShowAll"> Show all cards</label></div>
+      <div id="dailyStepCards">
+        <section class="step-card card-date" data-card="0">
+          <h3>1 — Date &amp; Filled By</h3>
+          <div class="grid">
+            <div><label>Date</label><input type="date" id="d_date"></div>
+            <div><label>Filled By (Operator)</label><input id="d_filledBy" placeholder="Operator name"></div>
+          </div>
+        </section>
+        <section class="step-card card-gas" data-card="1"><h3>2 — Site Main Gas</h3><div id="dailyMetersSiteGas"></div></section>
+        <section class="step-card card-gas" data-card="2"><h3>3 — Loss Boiler Gas</h3><div id="dailyMetersLossGas"></div></section>
+        <section class="step-card card-gas" data-card="3"><h3>4 — Bay Boiler Gas</h3><div id="dailyMetersBayGas"></div></section>
+        <section class="step-card card-gas" data-card="4"><h3>5 — Zozen HP Boiler Gas</h3><div id="dailyMetersZozenGas"></div></section>
+        <section class="step-card card-diesel" data-card="5"><h3>6 — Diesel</h3><div id="dailyMetersDiesel"></div></section>
+        <section class="step-card card-water" data-card="6"><h3>7 — Factory &amp; Soft Water</h3><div id="dailyMetersWater"></div></section>
+        <section class="step-card card-totals" data-card="7">
+          <h3>8 — Steam, Totals, Blowdown &amp; Remarks</h3>
+          <div class="grid">
+            <div><label>Boilers Total Gas Consumption (auto)</label><input id="d_totalGas" readonly></div>
+            <div><label>Total Diesel Consumption (auto)</label><input id="d_totalDiesel" readonly></div>
+            <div><label>Total Soft Consumption (auto)</label><input id="d_totalSoft" readonly></div>
+            <div><label>Steam Generation (ton)</label><input type="number" step="any" id="d_steam"></div>
+            <div><label>Gas m³/ton (auto)</label><input id="d_gasPerTon" readonly></div>
+            <div><label>Water m³/ton (auto)</label><input id="d_waterPerTon" readonly></div>
+            <div><label>Blowdown (m³)</label><input type="number" step="any" id="d_blowdown"></div>
+            <div><label>Remarks</label><input id="d_remarks" placeholder="Any abnormality"></div>
+          </div>
+        </section>
       </div>
       <p id="dailyMsg"></p>
-      <div class="row"><button class="btn" id="saveDailyBtn">Save Daily Overview</button><button class="btn secondary" id="clearDailyBtn">Clear form</button></div>
+      <div class="stepper-footer noprint"><button class="btn secondary" id="dailyPrevBtn">← Previous</button><button class="btn secondary" id="dailyNextBtn">Next →</button><button class="btn" id="saveDailyBtn">Save Daily Overview</button><button class="btn secondary" id="clearDailyBtn">Clear form</button></div>
       <h3>Saved daily entries</h3><div id="dailyList"></div>
     </div>
   </section>
 
   <!-- HOURLY -->
   <section id="view-hourly" class="hidden">
+    <div class="backrow noprint"><button class="btn secondary small" data-nav="dashboard">← Back to Dashboard</button></div>
     <div class="card">
       <h2>Hourly Boiler Log — one sheet per boiler</h2>
       <nav class="tabs" id="boilerTabs"></nav>
       <p class="muted" id="boilerNote"></p>
-      <div class="grid">
-        <div><label>Date</label><input type="date" id="h_date"></div>
-        <div><label>Time</label><input type="time" id="h_time"></div>
-        <div><label>Shift</label><select id="h_shift"><option>Morning</option><option>Evening</option><option>Night</option></select></div>
-        <div><label>Operator</label><input id="h_operator" placeholder="Operator name"></div>
+      <div class="stepper-bar noprint"><span id="hourlyStepLabel">Card 1 of 6</span><label class="toggle"><input type="checkbox" id="hourlyShowAll"> Show all cards</label></div>
+      <div id="hourlyStepCards">
+        <section class="step-card card-date" data-card="0">
+          <h3>1 — When &amp; Who</h3>
+          <div class="grid">
+            <div><label>Date</label><input type="date" id="h_date"></div>
+            <div><label>Time</label><input type="time" id="h_time"></div>
+            <div><label>Shift</label><select id="h_shift"><option>Morning</option><option>Evening</option><option>Night</option></select></div>
+            <div><label>Operator</label><input id="h_operator" placeholder="Operator name"></div>
+          </div>
+        </section>
+        <section class="step-card card-steam" data-card="1"><h3>2 — Steam</h3><div class="grid" id="hourlyCardSteam"></div></section>
+        <section class="step-card card-water" data-card="2"><h3>3 — Feed Water Tank (this boiler only)</h3><div class="grid" id="hourlyCardFeed"></div></section>
+        <section class="step-card card-gas" data-card="3"><h3>4 — Fuel Gas (+ Diesel)</h3><p class="muted" id="hourlyFuelNote"></p><div class="grid" id="hourlyCardFuel"></div></section>
+        <section class="step-card card-water" data-card="4"><h3>5 — Stack, O2, CO &amp; Soft Water</h3><div class="grid" id="hourlyCardStack"></div></section>
+        <section class="step-card card-totals" data-card="5"><h3>6 — Checks &amp; Remarks</h3><div class="grid" id="hourlyCardChecks"></div></section>
       </div>
-      <div id="hourlyFields"></div>
       <p id="hourlyMsg"></p>
-      <div class="row"><button class="btn" id="saveHourlyBtn">Save Hourly Row</button><button class="btn secondary" id="clearHourlyBtn">Clear form</button></div>
+      <div class="stepper-footer noprint"><button class="btn secondary" id="hourlyPrevBtn">← Previous</button><button class="btn secondary" id="hourlyNextBtn">Next →</button><button class="btn" id="saveHourlyBtn">Save Hourly Row</button><button class="btn secondary" id="clearHourlyBtn">Clear form</button></div>
       <h3>Saved rows for this boiler (newest first)</h3><div id="hourlyList"></div>
     </div>
   </section>
 
   <!-- REPORTS -->
   <section id="view-reports" class="hidden">
+    <div class="backrow noprint"><button class="btn secondary small" data-nav="dashboard">← Back to Dashboard</button></div>
     <div class="card">
       <h2>Reports</h2>
       <div class="grid">
@@ -99,6 +131,7 @@
 
   <!-- SETTINGS / APPWRITE -->
   <section id="view-settings" class="hidden">
+    <div class="backrow noprint"><button class="btn secondary small" data-nav="dashboard">← Back to Dashboard</button></div>
     <div class="card">
       <h2>Settings — Appwrite (optional, later)</h2>
       <p class="warn">Do NOT paste any password here. The owner creates a free Appwrite Cloud project, then pastes only the Endpoint, Project ID, Database ID and Collection IDs below. If these are blank, the app stays in DEMO mode and still works fully.</p>
@@ -118,6 +151,7 @@
 
   <!-- ADMIN -->
   <section id="view-admin" class="hidden">
+    <div class="backrow noprint"><button class="btn secondary small" data-nav="dashboard">← Back to Dashboard</button></div>
     <div class="card">
       <h2>Admin — Users &amp; Sections</h2>
       <p class="muted">Admin only. Operators do not see this screen.</p>
@@ -134,9 +168,6 @@
     </div>
   </section>
 
-  <nav class="tabs noprint" id="bottomNav" style="display:none">
-    <button data-nav="dashboard">Dashboard</button><button data-nav="daily">Daily</button><button data-nav="hourly">Hourly</button><button data-nav="reports">Reports</button><button data-nav="settings">Settings</button>
-  </nav>
 </main>
 
 <button class="fab noprint" id="fabBtn" title="Add">+</button>
